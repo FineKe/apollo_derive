@@ -2,7 +2,7 @@ use proc_macro::TokenStream;
 use std::fmt::Pointer;
 
 use quote::quote;
-use syn::{Data, DeriveInput, Type};
+use syn::{Data, DeriveInput, GenericArgument, Type};
 use syn::PathArguments;
 
 #[proc_macro_derive(Apollo)]
@@ -44,21 +44,30 @@ pub fn apollo_derive(input: TokenStream) -> TokenStream {
         } else {
             if is_option_type(filed_ty) {
                 let ty = get_option_inner_type(filed_ty).unwrap();
-
-                apply_funtion_ast.extend(quote!{
-                if self.#field_id.is_none() {
-                    self.#field_id = Some(#ty::default());
-                }
+                if is_vec_type(ty) {
+                    apply_funtion_ast.extend(quote!{
+                    self.#field_id = serde_json::from_str(config.get(&(prefix.to_string()+stringify!(#field_id))).unwrap()).unwrap();});
+                    collect_keys_ast.extend(quote!{
+                        keys.push((prefix.to_string()+stringify!(#field_id)).to_string());
+                    });
+                }else {
+                    apply_funtion_ast.extend(quote!{
+                        if self.#field_id.is_none() {
+                            self.#field_id = Some(#ty::default());
+                        }
                     // println!("key {}",&(prefix.to_string()+ stringify!(#field_id)));
-                    self.#field_id.as_mut().unwrap().apply(&(prefix.to_string()+ stringify!(#field_id)),config);
+                        self.#field_id.as_mut().unwrap().apply(&(prefix.to_string()+ stringify!(#field_id)),config);
                 });
-                collect_keys_ast.extend(quote!{
+                    collect_keys_ast.extend(quote!{
                     self.#field_id.as_mut().unwrap().collect_keys(&(prefix.to_string()+ stringify!(#field_id)),keys);
                 })
+                }
             }else if is_hash_map_type(filed_ty) {
                 apply_funtion_ast.extend(quote!{
                     self.#field_id = serde_json::from_str(config.get(&(prefix.to_string()+stringify!(#field_id))).unwrap()).unwrap()
-                    // self.#field_id.as_mut()(&(prefix.to_string()+ stringify!(#field_id)),config);
+                });
+                collect_keys_ast.extend(quote!{
+                    keys.push((prefix.to_string()+stringify!(#field_id)).to_string());
                 });
             }
             else  {
@@ -120,6 +129,16 @@ fn is_option_type(ty: &syn::Type) -> bool {
             if ident == "Option" {
                 return true;
             }
+        }
+    }
+    false
+}
+
+fn is_vec_type(ty: &Type) -> bool {
+    if let Type::Path(type_path) = ty {
+        let segments = &type_path.path.segments;
+        if segments.len() == 1 && segments[0].ident == "Vec" {
+            return true;
         }
     }
     false
