@@ -68,7 +68,7 @@ pub fn apollo_derive(input: TokenStream) -> TokenStream {
     }
 
     quote!{
-        impl ApolloConfigurer for #id {
+        impl ApolloConfigure for #id {
             fn apply(&mut self,prefix: &String, config: &HashMap<String, String>){
                 let prefix = if prefix.len() != 0 {
                     prefix.to_string() + "."
