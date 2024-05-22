@@ -19,7 +19,6 @@ pub fn apollo_derive(input: TokenStream) -> TokenStream {
 
     for (idx, f) in s.fields.iter().enumerate() {
         let (field_id, filed_ty) = (&f.ident, &f.ty);
-        println!("============================");
 
         if is_primitive_type(filed_ty) {
             apply_funtion_ast.extend(quote! {
@@ -56,7 +55,13 @@ pub fn apollo_derive(input: TokenStream) -> TokenStream {
                 collect_keys_ast.extend(quote!{
                     self.#field_id.as_mut().unwrap().collect_keys(&(prefix.to_string()+ stringify!(#field_id)),keys);
                 })
-            }else {
+            }else if is_hash_map_type(filed_ty) {
+                apply_funtion_ast.extend(quote!{
+                    self.#field_id = serde_json::from_str(config.get(&(prefix.to_string()+stringify!(#field_id))).unwrap()).unwrap()
+                    // self.#field_id.as_mut()(&(prefix.to_string()+ stringify!(#field_id)),config);
+                });
+            }
+            else  {
                 apply_funtion_ast.extend(quote!{
                     self.#field_id.apply(&(prefix.to_string()+ stringify!(#field_id)),config);
                 });
@@ -135,6 +140,19 @@ fn is_option_of_primitive_type(ty: &syn::Type) -> bool {
                         }
                     }
                 }
+            }
+        }
+    }
+    false
+}
+
+fn is_hash_map_type(ty: &syn::Type) -> bool {
+    if let syn::Type::Path(type_path) = ty {
+        if let Some(segment) = type_path.path.segments.last() {
+            let ident = &segment.ident.to_string();
+            // 检查是否是 HashMap 类型
+            if ident == "HashMap" {
+                return true;
             }
         }
     }
