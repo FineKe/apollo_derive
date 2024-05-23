@@ -1,11 +1,11 @@
 use proc_macro::TokenStream;
 
 use quote::quote;
-use syn::PathArguments;
+use syn::{Ident, PathArguments};
 use syn::__private::TokenStream2;
 use syn::{Data, DeriveInput, Type};
 
-use crate::field_type::{field_type, get_field_type, is_serde_with_json, FieldType};
+use crate::field_type::{field_type, get_field_type, is_serde_with_json, FieldType, get_deserialize_type};
 
 mod field_type;
 
@@ -166,24 +166,37 @@ fn expand_struct_type(
     apply_function_ast: &mut TokenStream2,
     collect_keys_ast: &mut TokenStream2,
 ) {
-    if is_serde_with_json(field) {
-        apply_function_ast.extend(quote! {
-              let v = config.get(&(prefix.to_string()+stringify!(#field_id))).unwrap();
-              self.#field_id = serde_json::from_str(v).unwrap();
-        });
-        collect_keys_ast.extend(quote! {
-            keys.push((prefix.to_string()+stringify!(#field_id)).to_string());
-        });
 
-        return;
+    let deserialize_type =  get_deserialize_type(field);
+    match deserialize_type {
+        None => {
+            apply_function_ast.extend(quote! {
+            self.#field_id.apply(&(prefix.to_string()+ stringify!(#field_id)),config);
+            });
+            collect_keys_ast.extend(quote! {
+            self.#field_id.collect_keys(&(prefix.to_string()+ stringify!(#field_id)),keys);
+            })
+        }
+        Some(ref func) => {
+            if func.to_string() == "json" {
+                apply_function_ast.extend(quote! {
+                 let v = config.get(&(prefix.to_string()+stringify!(#field_id))).unwrap();
+                self.#field_id = serde_json::from_str(v).unwrap();
+                });
+                collect_keys_ast.extend(quote! {
+                keys.push((prefix.to_string()+stringify!(#field_id)).to_string());
+                });
+            }else {
+                apply_function_ast.extend(quote! {
+                let v = config.get(&(prefix.to_string()+stringify!(#field_id))).unwrap();
+                self.#field_id = #func(v);
+                });
+                collect_keys_ast.extend(quote! {
+                keys.push((prefix.to_string()+stringify!(#field_id)).to_string());
+                });
+            }
+        }
     }
-
-    apply_function_ast.extend(quote! {
-        self.#field_id.apply(&(prefix.to_string()+ stringify!(#field_id)),config);
-    });
-    collect_keys_ast.extend(quote! {
-        self.#field_id.collect_keys(&(prefix.to_string()+ stringify!(#field_id)),keys);
-    })
 }
 
 fn expand_with_json(

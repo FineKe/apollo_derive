@@ -1,4 +1,4 @@
-use syn::{Field, Meta, NestedMeta, Type};
+use syn::{Field, Ident, Meta, NestedMeta, Type};
 
 pub enum FieldType {
     PRIMITIVE,
@@ -53,4 +53,33 @@ pub fn is_serde_with_json(field: &Field) -> bool {
     }
 
     false
+}
+
+pub fn get_deserialize_type(field: &Field) -> Option<Ident> {
+    for attr in &field.attrs {
+        if !attr.path.is_ident("apollo") {
+            continue;
+        }
+
+        if let Ok(Meta::List(meta_list)) = attr.parse_meta() {
+            for nested_meta in meta_list.nested {
+                if let NestedMeta::Meta(Meta::NameValue(meta_name_value)) = nested_meta {
+                    if meta_name_value.path.is_ident("with") {
+                        // if let syn::Lit::Str(lit_str) = meta_name_value.lit {
+                        //     let renamed_value = lit_str.value();
+                        //     return renamed_value;
+                        // }
+
+                        if let syn::Lit::Str(func_name) = &meta_name_value.lit {
+                            let func_ident = syn::Ident::new(&func_name.value(), func_name.span());
+                            return Some(func_ident);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+
+    None
 }
