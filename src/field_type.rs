@@ -1,56 +1,56 @@
-use std::any::Any;
-use syn::{Field, Type};
-
+use syn::{Field, Meta, NestedMeta, Type};
 
 pub enum FieldType {
     PRIMITIVE,
     OPTION,
     STRUCT,
-    COLLECTION
+    COLLECTION,
 }
 
-pub fn field_type(ty: &syn::Type) -> FieldType {
-    if let syn::Type::Path(type_path) = ty {
+pub fn field_type(ty: &syn::Field) -> FieldType {
+    get_field_type(&ty.ty)
+}
+
+pub fn get_field_type(ty: &Type) -> FieldType {
+    if let syn::Type::Path(type_path) = &ty {
         if let Some(segment) = type_path.path.segments.last() {
             let ident = &segment.ident.to_string();
             return match ident.as_str() {
                 "u8" | "u16" | "u32" | "u64" | "u128" | "i8" | "i16" | "i32" | "i64" | "i128"
-                | "usize" | "isize" | "f32" | "f64" | "bool" | "char" | "str" | "String" => return FieldType::PRIMITIVE,
-                "Option" => return FieldType::OPTION,
-                "HashMap" | "Vec" => return FieldType::COLLECTION,
-                _ => return FieldType::STRUCT,
-
-            }
+                | "usize" | "isize" | "f32" | "f64" | "bool" | "char" | "str" | "String" => {
+                    FieldType::PRIMITIVE
+                }
+                "Option" => FieldType::OPTION,
+                "HashMap" | "Vec" => FieldType::COLLECTION,
+                _ => FieldType::STRUCT,
+            };
         }
     }
 
     panic!("Unsupported field type: ");
 }
 
-fn is_collection_type(ty: &Type) -> bool {
-    if let Type::Path(type_path) = ty {
-        let segments = &type_path.path.segments;
-        if segments.len() == 1  {
-            let ident = segments[0].ident.to_string();
-            if ident == "Vec" || ident == "HashMap" {
-                return true;
-            }
+pub fn is_serde_with_json(field: &Field) -> bool {
+    for attr in &field.attrs {
+        if !attr.path.is_ident("apollo") {
+            continue;
         }
-    }
-    false
-}
 
-fn is_primitive_type(ty: &syn::Type) -> bool {
-    if let syn::Type::Path(type_path) = ty {
-        if let Some(segment) = type_path.path.segments.last() {
-            let ident = &segment.ident.to_string();
-            // 检查是否是 Rust 的基本类型
-            match ident.as_str() {
-                "u8" | "u16" | "u32" | "u64" | "u128" | "i8" | "i16" | "i32" | "i64" | "i128"
-                | "usize" | "isize" | "f32" | "f64" | "bool" | "char" | "str" | "String" => return true,
-                _ => return false,
+        if let Ok(Meta::List(meta_list)) = attr.parse_meta() {
+            for nested_meta in meta_list.nested {
+                if let NestedMeta::Meta(Meta::NameValue(meta_name_value)) = nested_meta {
+                    if meta_name_value.path.is_ident("with") {
+                        if let syn::Lit::Str(lit_str) = meta_name_value.lit {
+                            let renamed_value = lit_str.value();
+                            if renamed_value == "json" {
+                                return true;
+                            }
+                        }
+                    }
+                }
             }
         }
     }
+
     false
 }
