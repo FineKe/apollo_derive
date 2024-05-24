@@ -1,11 +1,11 @@
 use proc_macro::TokenStream;
 
 use quote::quote;
-use syn::{Ident, PathArguments};
 use syn::__private::TokenStream2;
 use syn::{Data, DeriveInput, Type};
+use syn::PathArguments;
 
-use crate::field_type::{field_type, get_field_type, is_serde_with_json, FieldType, get_deserialize_type};
+use crate::field_type::{field_type, get_deserialize_type, get_field_type, FieldType};
 
 mod field_type;
 
@@ -121,30 +121,40 @@ fn expand_option_type(
             panic!("nested option type is not supported")
         }
         FieldType::STRUCT => {
-            if is_serde_with_json(f) {
-                apply_function_ast.extend(quote! {
-                      if let Some(v) = config.get(&(prefix.to_string()+stringify!(#field_id))){
-                      self.#field_id = Some(serde_json::from_str(v).unwrap());
-                        }
-                });
-                collect_keys_ast.extend(quote! {
-                    keys.push((prefix.to_string()+stringify!(#field_id)).to_string());
-                });
-
-                return;
-            }
-            apply_function_ast.extend(quote!{
+            let deserialize_type = get_deserialize_type(f);
+            match deserialize_type {
+                None => {
+                    apply_function_ast.extend(quote! {
+                        self.#field_id.as_mut().unwrap().apply(&(prefix.to_string()+ stringify!(#field_id)),config);
+                    });
+                    collect_keys_ast.extend(quote! {
                         if self.#field_id.is_none() {
-                            self.#field_id = Some(#ty::default());
+                            self.#field_id = Some(#ty::default())
                         }
-                        self.#field_id.as_mut().unwrap().apply(&(prefix.to_string()+ stringify!(#field_id)),config);}
-            );
-
-            collect_keys_ast.extend(
-                quote!{
-                    self.#field_id.as_mut().unwrap().collect_keys(&(prefix.to_string()+ stringify!(#field_id)),keys);
+                        self.#field_id.as_mut().unwrap().collect_keys(&(prefix.to_string()+ stringify!(#field_id)),keys);
+                    })
+                }
+                Some(ref func) => {
+                    if func.to_string() == "json" {
+                        apply_function_ast.extend(quote! {
+                            let v = config.get(&(prefix.to_string()+stringify!(#field_id))).unwrap();
+                            self.#field_id = serde_json::from_str(v).unwrap();
+                        });
+                        collect_keys_ast.extend(quote! {
+                            keys.push((prefix.to_string()+stringify!(#field_id)).to_string());
+                        });
+                    } else {
+                        //custom
+                        apply_function_ast.extend(quote! {
+                            let v = config.get(&(prefix.to_string()+stringify!(#field_id))).unwrap();
+                            self.#field_id = #func(v);
+                        });
+                        collect_keys_ast.extend(quote! {
+                            keys.push((prefix.to_string()+stringify!(#field_id)).to_string());
+                        });
                     }
-            )
+                }
+            }
         }
 
         FieldType::COLLECTION => {
@@ -166,8 +176,7 @@ fn expand_struct_type(
     apply_function_ast: &mut TokenStream2,
     collect_keys_ast: &mut TokenStream2,
 ) {
-
-    let deserialize_type =  get_deserialize_type(field);
+    let deserialize_type = get_deserialize_type(field);
     match deserialize_type {
         None => {
             apply_function_ast.extend(quote! {
@@ -186,7 +195,7 @@ fn expand_struct_type(
                 collect_keys_ast.extend(quote! {
                 keys.push((prefix.to_string()+stringify!(#field_id)).to_string());
                 });
-            }else {
+            } else {
                 apply_function_ast.extend(quote! {
                 let v = config.get(&(prefix.to_string()+stringify!(#field_id))).unwrap();
                 self.#field_id = #func(v);

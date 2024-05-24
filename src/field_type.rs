@@ -30,31 +30,6 @@ pub fn get_field_type(ty: &Type) -> FieldType {
     panic!("Unsupported field type: ");
 }
 
-pub fn is_serde_with_json(field: &Field) -> bool {
-    for attr in &field.attrs {
-        if !attr.path.is_ident("apollo") {
-            continue;
-        }
-
-        if let Ok(Meta::List(meta_list)) = attr.parse_meta() {
-            for nested_meta in meta_list.nested {
-                if let NestedMeta::Meta(Meta::NameValue(meta_name_value)) = nested_meta {
-                    if meta_name_value.path.is_ident("with") {
-                        if let syn::Lit::Str(lit_str) = meta_name_value.lit {
-                            let renamed_value = lit_str.value();
-                            if renamed_value == "json" {
-                                return true;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    false
-}
-
 pub fn get_deserialize_type(field: &Field) -> Option<Ident> {
     for attr in &field.attrs {
         if !attr.path.is_ident("apollo") {
@@ -79,7 +54,6 @@ pub fn get_deserialize_type(field: &Field) -> Option<Ident> {
             }
         }
     }
-
 
     None
 }
