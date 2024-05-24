@@ -108,7 +108,6 @@ fn expand_option_type(
     match get_field_type(ty) {
         FieldType::PRIMITIVE => {
             apply_function_ast.extend(quote! {
-                    println!("apollo key: {}",&(prefix.to_string()+stringify!(#field_id)));
                     if let Some(v) = config.get(&(prefix.to_string()+stringify!(#field_id))) {
                         self.#field_id = Some(v.parse().unwrap());
                     }
@@ -125,7 +124,9 @@ fn expand_option_type(
             match deserialize_type {
                 None => {
                     apply_function_ast.extend(quote! {
-                        self.#field_id.as_mut().unwrap().apply(&(prefix.to_string()+ stringify!(#field_id)),config);
+                        if let Some(v) = config.get(&(prefix.to_string()+stringify!(#field_id))) {
+                            self.#field_id.as_mut().unwrap().apply(&(prefix.to_string()+ stringify!(#field_id)),config);
+                        }
                     });
                     collect_keys_ast.extend(quote! {
                         if self.#field_id.is_none() {
@@ -137,8 +138,9 @@ fn expand_option_type(
                 Some(ref func) => {
                     if func.to_string() == "json" {
                         apply_function_ast.extend(quote! {
-                            let v = config.get(&(prefix.to_string()+stringify!(#field_id))).unwrap();
-                            self.#field_id = serde_json::from_str(v).unwrap();
+                            if let Some(v) = config.get(&(prefix.to_string()+stringify!(#field_id))) {
+                                self.#field_id = serde_json::from_str(v).unwrap();
+                            }
                         });
                         collect_keys_ast.extend(quote! {
                             keys.push((prefix.to_string()+stringify!(#field_id)).to_string());
@@ -146,8 +148,9 @@ fn expand_option_type(
                     } else {
                         //custom
                         apply_function_ast.extend(quote! {
-                            let v = config.get(&(prefix.to_string()+stringify!(#field_id))).unwrap();
-                            self.#field_id = #func(v);
+                            if let Some(v) = config.get(&(prefix.to_string()+stringify!(#field_id))) {
+                                self.#field_id = #func(v);
+                            }
                         });
                         collect_keys_ast.extend(quote! {
                             keys.push((prefix.to_string()+stringify!(#field_id)).to_string());
@@ -188,18 +191,24 @@ fn expand_struct_type(
         }
         Some(ref func) => {
             if func.to_string() == "json" {
-                apply_function_ast.extend(quote! {
-                 let v = config.get(&(prefix.to_string()+stringify!(#field_id))).unwrap();
-                self.#field_id = serde_json::from_str(v).unwrap();
-                });
-                collect_keys_ast.extend(quote! {
-                keys.push((prefix.to_string()+stringify!(#field_id)).to_string());
-                });
+                apply_function_ast.extend(
+                    quote! {
+                        let v = config.get(&(prefix.to_string()+stringify!(#field_id))).unwrap();
+                        self.#field_id = serde_json::from_str(v).unwrap();
+                    }
+                );
+                collect_keys_ast.extend(
+                    quote! {
+                    keys.push((prefix.to_string()+stringify!(#field_id)).to_string());
+                    }
+                );
             } else {
-                apply_function_ast.extend(quote! {
-                let v = config.get(&(prefix.to_string()+stringify!(#field_id))).unwrap();
-                self.#field_id = #func(v);
-                });
+                apply_function_ast.extend(
+                    quote! {
+                        let v = config.get(&(prefix.to_string()+stringify!(#field_id))).unwrap();
+                        self.#field_id = #func(v);
+                    }
+                );
                 collect_keys_ast.extend(quote! {
                 keys.push((prefix.to_string()+stringify!(#field_id)).to_string());
                 });
